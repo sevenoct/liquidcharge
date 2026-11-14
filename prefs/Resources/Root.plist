@@ -156,6 +156,28 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
+			<string>Warna hijau (connect), biru (disconnect) dan merah (baterai rendah). Matikan untuk popup netral putih.</string>
+			<key>label</key>
+			<string></string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.hasan.liquidglasscharge/prefs</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.hasan.liquidglasscharge</string>
+			<key>key</key>
+			<string>AccentColors</string>
+			<key>label</key>
+			<string>Colored Accent</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
 			<string>Glass strength and rendering quality.</string>
 			<key>label</key>
 			<string>Main Controls</string>
