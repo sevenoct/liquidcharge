@@ -1,16 +1,396 @@
 // LiquidCharge - popup "liquid glass" saat charger connect / disconnect
 // Target: iOS 15 (SpringBoard). Build dengan Theos.
+// Setting: Settings > LiquidCharge (model Default/Compact/Simple, ukuran, posisi, dan seluruh setting Liquid Glass).
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreMotion/CoreMotion.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 
-#define LC_W 300.0
-#define LC_H 72.0
 #define LC_SHOW_SECONDS 3.0
 
 @interface UIWindow (LCPrivate)
 - (void)_setSecure:(BOOL)secure;
 @end
+
+#pragma mark - Pengaturan tata letak (model, ukuran, posisi)
+
+static NSInteger lcModel = 0;      // 0 Default, 1 Compact, 2 Simple
+static CGFloat lcSize = 1.0;       // skala ukuran popup
+static NSInteger lcPosition = 0;   // 0 Top, 1 Bottom
+static CGFloat lcVOffset = 0;      // jarak tambahan dari tepi layar (menjauhi tepi)
+
+#pragma mark - Pengaturan Liquid Glass (Settings > LiquidCharge > Popup Glass)
+
+#define LC_DOMAIN CFSTR("com.example.liquidcharge")
+
+static id LCPref(NSString *key) {
+    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, LC_DOMAIN));
+}
+static CGFloat LCNum(NSString *k, CGFloat def) {
+    id v = LCPref(k);
+    return [v respondsToSelector:@selector(doubleValue)] ? (CGFloat)[v doubleValue] : def;
+}
+static BOOL LCBool(NSString *k, BOOL def) {
+    id v = LCPref(k);
+    return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : def;
+}
+static CGFloat LCClamp(CGFloat v, CGFloat lo, CGFloat hi) { return MAX(lo, MIN(hi, v)); }
+static UIColor *LCHexColor(id hex, CGFloat a, UIColor *def) {
+    if ([hex isKindOfClass:NSString.class]) {
+        NSString *h = [hex stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"# \n"]];
+        unsigned v = 0;
+        if (h.length == 6 && [[NSScanner scannerWithString:h] scanHexInt:&v])
+            return [UIColor colorWithRed:((v >> 16) & 255) / 255.0 green:((v >> 8) & 255) / 255.0 blue:(v & 255) / 255.0 alpha:a];
+    }
+    return [def colorWithAlphaComponent:a];
+}
+
+@interface LCStyle : NSObject
+@property (nonatomic) BOOL enabled, dispersion;
+@property (nonatomic) CGFloat blur, refraction, index, thickness, bezel, dispStrength, corner;
+@property (nonatomic) NSInteger spec;   // 0 None, 1 Border, 2 Glass, 3 iOS 26, 4 iOS 27
+@property (nonatomic, strong) UIColor *lightTint, *darkTint;
++ (instancetype)loadWithPrefix:(NSString *)p;
+@end
+@implementation LCStyle
++ (instancetype)loadWithPrefix:(NSString *)p {
+    LCStyle *s = [LCStyle new];
+    #define K(x) [NSString stringWithFormat:@"%@.%@", p, x]
+    s.enabled = LCBool(K(@"Enabled"), YES);
+    s.blur = LCClamp(LCNum(K(@"Blur"), 20), 0, 60);
+    s.refraction = LCClamp(LCNum(K(@"Refraction"), 0.35), -2, 2);
+    s.index = LCClamp(LCNum(K(@"RefractiveIndex"), 1.5), 1, 2.5);
+    s.thickness = LCClamp(LCNum(K(@"GlassThickness"), 1), 0.1, 4);
+    s.bezel = LCClamp(LCNum(K(@"BezelWidth"), 10), 2, 60);
+    s.spec = (NSInteger)LCNum(K(@"SpecularType"), 2);
+    s.dispersion = LCBool(K(@"DispersionEnabled"), NO);
+    s.dispStrength = LCClamp(LCNum(K(@"DispersionStrength"), 0.5), 0, 1);
+    s.corner = LCClamp(LCNum(K(@"CornerRadius"), 100), 0, 100);
+    s.lightTint = LCHexColor(LCPref(K(@"LightTint")), LCClamp(LCNum(K(@"LightTintAlpha"), 0.25), 0, 1), UIColor.whiteColor);
+    s.darkTint = LCHexColor(LCPref(K(@"DarkTint")), LCClamp(LCNum(K(@"DarkTintAlpha"), 0.10), 0, 1), UIColor.whiteColor);
+    #undef K
+    return s;
+}
+@end
+
+static BOOL lcMaster = YES, lcMotion = NO;
+static CGFloat lcLiquidity = 1, lcQuality = 0.5, lcMotionSens = 1;
+static LCStyle *lcStyle;
+
+#pragma mark - Glass views (gaya Liquid Glass: backdrop blur + refraksi + specular rim + dispersi)
+
+static id LCFilter(NSString *type) {
+    Class CF = NSClassFromString(@"CAFilter");
+    if (!CF) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(CF, NSSelectorFromString(@"filterWithType:"), type);
+}
+
+// Peta displacement: di tepi (selebar "bezel") cahaya dibelokkan; 128 = netral
+static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
+    static NSCache *cache;
+    if (!cache) { cache = [NSCache new]; cache.countLimit = 24; }
+    int W = MAX(2, (int)lround(sz.width)), H = MAX(2, (int)lround(sz.height));
+    NSString *key = [NSString stringWithFormat:@"%d,%d,%.1f,%.1f,%.2f,%.2f,%.2f", W, H, radius, st.bezel, st.refraction, st.index, st.thickness];
+    UIImage *hit = [cache objectForKey:key];
+    if (hit) return hit;
+    CGFloat strength = LCClamp((st.index - 1.0) * st.refraction * st.thickness * 1.6, -1, 1);
+    uint8_t *buf = malloc((size_t)W * H * 4);
+    float hx = W / 2.0f, hy = H / 2.0f;
+    float r = (float)MIN(radius, MIN(hx, hy)), bz = (float)MAX(1, st.bezel);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            float px = x + 0.5f - hx, py = y + 0.5f - hy;
+            float qx = fabsf(px) - (hx - r), qy = fabsf(py) - (hy - r);
+            float ox = MAX(qx, 0), oy = MAX(qy, 0);
+            float outside = sqrtf(ox * ox + oy * oy);
+            float sd = outside + MIN(MAX(qx, qy), 0) - r;     // negatif di dalam
+            float d = -sd;
+            uint8_t R = 128, G = 128;
+            if (d >= 0 && d < bz) {
+                float gx, gy;
+                if (qx > 0 && qy > 0 && outside > 0) { gx = (px < 0 ? -ox : ox) / outside; gy = (py < 0 ? -oy : oy) / outside; }
+                else if (qx > qy) { gx = px < 0 ? -1 : 1; gy = 0; }
+                else { gx = 0; gy = py < 0 ? -1 : 1; }
+                float t = 1.0f - d / bz;
+                float m = powf(t, 2.2f) * (float)strength;
+                R = (uint8_t)LCClamp(128 + 127 * gx * m, 0, 255);
+                G = (uint8_t)LCClamp(128 + 127 * gy * m, 0, 255);
+            }
+            uint8_t *p = buf + ((size_t)y * W + x) * 4;
+            p[0] = R; p[1] = G; p[2] = 128; p[3] = 255;
+        }
+    }
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(buf, W, H, 8, (size_t)W * 4, cs, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGImageRef ci = CGBitmapContextCreateImage(ctx);
+    UIImage *img = [UIImage imageWithCGImage:ci scale:1 orientation:UIImageOrientationUp];
+    CGImageRelease(ci); CGContextRelease(ctx); CGColorSpaceRelease(cs); free(buf);
+    [cache setObject:img forKey:key];
+    return img;
+}
+
+// Ring tipis berwarna gradient (specular / dispersi), di-mask jadi garis tepi
+@interface LCRimView : UIView
+@property (nonatomic) CGFloat lineWidth;
+- (void)setColors:(NSArray *)colors locations:(NSArray *)loc width:(CGFloat)w angle:(CGFloat)a;
+- (void)setAngle:(CGFloat)a;
+@end
+@implementation LCRimView { CAShapeLayer *_mask; }
++ (Class)layerClass { return [CAGradientLayer class]; }
+- (instancetype)initWithFrame:(CGRect)f {
+    if (!(self = [super initWithFrame:f])) return nil;
+    self.userInteractionEnabled = NO;
+    self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _mask = [CAShapeLayer layer];
+    _mask.fillColor = NULL;
+    _mask.strokeColor = UIColor.whiteColor.CGColor;
+    self.layer.mask = _mask;
+    _lineWidth = 1;
+    return self;
+}
+- (void)setColors:(NSArray *)colors locations:(NSArray *)loc width:(CGFloat)w angle:(CGFloat)a {
+    CAGradientLayer *gl = (CAGradientLayer *)self.layer;
+    NSMutableArray *cg = [NSMutableArray array];
+    for (UIColor *c in colors) [cg addObject:(id)c.CGColor];
+    gl.colors = cg;
+    gl.locations = loc;
+    _lineWidth = w;
+    [self setAngle:a];
+    [self setNeedsLayout];
+}
+- (void)setAngle:(CGFloat)a {
+    CAGradientLayer *gl = (CAGradientLayer *)self.layer;
+    CGFloat dx = cos(a) * 0.5, dy = sin(a) * 0.5;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    gl.startPoint = CGPointMake(0.5 - dx, 0.5 - dy);
+    gl.endPoint = CGPointMake(0.5 + dx, 0.5 + dy);
+    [CATransaction commit];
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat w = _lineWidth, r = self.superview.layer.cornerRadius;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _mask.frame = self.bounds;
+    _mask.lineWidth = w;
+    _mask.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(self.bounds, w / 2, w / 2) cornerRadius:MAX(0, r - w / 2)].CGPath;
+    [CATransaction commit];
+}
+@end
+
+@interface LCGlassView : UIView
+@property (nonatomic, readonly) UIView *content;
+@property (nonatomic) CGFloat maxRadius;                // 0 = tanpa batas
+- (void)applyStyle;
+- (void)setMotionAngle:(CGFloat)a;
+- (CGFloat)radiusForSize:(CGSize)s;
+@end
+
+static NSHashTable<LCGlassView *> *LCRegistry(void) {
+    static NSHashTable *t;
+    if (!t) t = [NSHashTable weakObjectsHashTable];
+    return t;
+}
+
+// Dasar kaca = UIVisualEffectView (backdrop yang pasti menangkap wallpaper), lalu filter
+// backdrop-nya diganti (blur/saturasi/refraksi) dan lapisan gelap bawaannya disembunyikan
+// supaya tampilannya ditentukan oleh tint + rim kita (lebih mirip dock / Control Center).
+@implementation LCGlassView {
+    UIVisualEffectView *_fx;
+    UIView *_tint;
+    LCRimView *_red, *_blue, *_spec;
+    CGFloat _motion;
+    NSString *_lastKey;
+    BOOL _glassOn;
+}
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (!(self = [super initWithFrame:frame])) return nil;
+    self.clipsToBounds = YES;
+    self.layer.cornerCurve = kCACornerCurveContinuous;
+    UIViewAutoresizing flex = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    _fx = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+    _fx.frame = self.bounds; _fx.autoresizingMask = flex;
+    [self addSubview:_fx];
+
+    _tint = [[UIView alloc] initWithFrame:self.bounds];
+    _tint.autoresizingMask = flex; _tint.userInteractionEnabled = NO;
+    [self addSubview:_tint];
+
+    _red = [[LCRimView alloc] initWithFrame:self.bounds];
+    _blue = [[LCRimView alloc] initWithFrame:self.bounds];
+    _spec = [[LCRimView alloc] initWithFrame:self.bounds];
+    [self addSubview:_red]; [self addSubview:_blue]; [self addSubview:_spec];
+
+    _content = [[UIView alloc] initWithFrame:self.bounds];
+    _content.autoresizingMask = flex;
+    [self addSubview:_content];
+
+    [LCRegistry() addObject:self];
+    [self applyStyle];
+    return self;
+}
+- (LCStyle *)style {
+    if (!lcStyle) lcStyle = [LCStyle loadWithPrefix:@"Popup"];
+    return lcStyle;
+}
+- (CGFloat)radiusForSize:(CGSize)s {
+    CGFloat full = MIN(s.width, s.height) / 2;
+    if (_maxRadius > 0) full = MIN(full, _maxRadius);
+    return full * [self style].corner / 100.0;
+}
+- (void)traitCollectionDidChange:(UITraitCollection *)prev {
+    [super traitCollectionDidChange:prev];
+    [self applyStyle];
+}
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    _lastKey = nil;
+    [self setNeedsLayout];
+}
+- (void)setMotionAngle:(CGFloat)a { _motion = a; [self updateSpecAngle]; }
+- (void)updateSpecAngle { [_spec setAngle:M_PI_4 + _motion]; }
+
+- (void)applyStyle {
+    LCStyle *st = [self style];
+    BOOL glass = st.enabled;
+    if (_glassOn && !glass) {
+        // kembali ke material bawaan: set ulang effect supaya UIKit memasang filter aslinya
+        _fx.effect = nil;
+        _fx.effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+    }
+    _glassOn = glass;
+
+    BOOL isDark = self.traitCollection.userInterfaceStyle != UIUserInterfaceStyleLight;
+    _tint.backgroundColor = glass ? (isDark ? st.darkTint : st.lightTint) : UIColor.clearColor;
+
+    UIColor *(^W)(CGFloat) = ^UIColor *(CGFloat a) { return [UIColor colorWithWhite:1 alpha:a]; };
+    _spec.hidden = !(glass && st.spec > 0);
+    switch (st.spec) {
+        // tipis & halus seperti dock / Control Center; terang hanya di sudut kiri-atas & kanan-bawah
+        case 1: [_spec setColors:@[W(0.22), W(0.22)] locations:@[@0, @1] width:0.7 angle:M_PI_4]; break;
+        case 2: [_spec setColors:@[W(0.50), W(0.12), W(0.05), W(0.10), W(0.30)] locations:@[@0, @0.3, @0.55, @0.8, @1] width:0.8 angle:M_PI_4]; break;
+        case 3: [_spec setColors:@[W(0.70), W(0.10), W(0.03), W(0.08), W(0.55)] locations:@[@0, @0.25, @0.5, @0.75, @1] width:0.9 angle:M_PI_4]; break;
+        case 4: [_spec setColors:@[W(0.45), W(0.14), W(0.06), W(0.14), W(0.40)] locations:@[@0, @0.3, @0.5, @0.7, @1] width:1.1 angle:M_PI_4]; break;
+        default: break;
+    }
+    [self updateSpecAngle];
+
+    BOOL disp = glass && st.dispersion && st.dispStrength > 0.01;
+    _red.hidden = _blue.hidden = !disp;
+    if (disp) {
+        CGFloat a = 0.35 * st.dispStrength;
+        UIColor *rc = [UIColor colorWithRed:1 green:0.25 blue:0.25 alpha:a], *bc = [UIColor colorWithRed:0.25 green:0.55 blue:1 alpha:a];
+        [_red setColors:@[rc, rc] locations:@[@0, @1] width:0.9 angle:M_PI_4];
+        [_blue setColors:@[bc, bc] locations:@[@0, @1] width:0.9 angle:M_PI_4];
+        CGFloat o = 0.3 + 0.9 * st.dispStrength;
+        _red.transform = CGAffineTransformMakeTranslation(-o, -o);
+        _blue.transform = CGAffineTransformMakeTranslation(o, o);
+    }
+    _lastKey = nil;
+    [self setNeedsLayout];
+}
+
+- (void)refreshFilters {
+    LCStyle *st = [self style];
+    if (!st.enabled) return;
+    CGSize sz = self.bounds.size;
+    if (sz.width < 2 || sz.height < 2) return;
+
+    // backdrop internal milik UIVisualEffectView + sembunyikan lapisan warna bawaannya
+    UIView *bd = nil;
+    for (UIView *s in _fx.subviews) {
+        if (strstr(object_getClassName(s), "Backdrop")) bd = s;
+        else s.hidden = YES;
+    }
+    if (!bd) return;
+
+    NSMutableArray *f = [NSMutableArray array];
+    if (fabs(st.refraction) > 0.001 && st.index > 1.001) {
+        id d = LCFilter(@"displacementMap");
+        UIImage *map = LCDisplacementMap(sz, self.layer.cornerRadius, st);
+        if (d && map) {
+            @try {
+                [d setValue:(__bridge id)map.CGImage forKey:@"inputImage"];
+                [d setValue:@(st.bezel * 1.2) forKey:@"inputAmount"];
+                [f addObject:d];
+            } @catch (id e) {}
+        }
+    }
+    id blur = LCFilter(@"gaussianBlur");
+    if (blur) {
+        @try {
+            [blur setValue:@(MAX(0.5, st.blur * lcLiquidity)) forKey:@"inputRadius"];
+            [blur setValue:@YES forKey:@"inputNormalizeEdges"];
+            [f addObject:blur];
+        } @catch (id e) {}
+    }
+    id sat = LCFilter(@"colorSaturate");
+    if (sat) { @try { [sat setValue:@1.8 forKey:@"inputAmount"]; [f addObject:sat]; } @catch (id e) {} }
+    if (!f.count) return;       // filter privat tidak ada -> biarkan material bawaan
+
+    CALayer *bl = bd.layer;
+    @try {
+        bl.filters = f;
+        if ([bl respondsToSelector:NSSelectorFromString(@"setScale:")]) [bl setValue:@(lcQuality) forKey:@"scale"];
+    } @catch (id e) {}
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [_red setNeedsLayout]; [_blue setNeedsLayout]; [_spec setNeedsLayout];
+    NSString *k = [NSString stringWithFormat:@"%.1f,%.1f,%.1f", self.bounds.size.width, self.bounds.size.height, self.layer.cornerRadius];
+    if ([k isEqualToString:_lastKey]) return;
+    _lastKey = k;
+    [self refreshFilters];
+}
+@end
+
+
+// Highlight mengikuti arah perangkat (kompas)
+@interface LCMotion : NSObject
++ (void)refresh;
+@end
+@implementation LCMotion
++ (void)refresh {
+    static CMMotionManager *mm;
+    BOOL want = lcMotion && lcMaster && LCRegistry().count > 0;
+    if (want && !mm) {
+        mm = [CMMotionManager new];
+        mm.deviceMotionUpdateInterval = 1.0 / 30;
+        CMAttitudeReferenceFrame fr = ([CMMotionManager availableAttitudeReferenceFrames] & CMAttitudeReferenceFrameXMagneticNorthZVertical)
+            ? CMAttitudeReferenceFrameXMagneticNorthZVertical : CMAttitudeReferenceFrameXArbitraryZVertical;
+        [mm startDeviceMotionUpdatesUsingReferenceFrame:fr toQueue:NSOperationQueue.mainQueue withHandler:^(CMDeviceMotion *m, NSError *e) {
+            if (!m) return;
+            CGFloat a = m.attitude.yaw * lcMotionSens;
+            for (LCGlassView *v in LCRegistry().allObjects) [v setMotionAngle:a];
+        }];
+    } else if (!want && mm) {
+        [mm stopDeviceMotionUpdates];
+        mm = nil;
+        for (LCGlassView *v in LCRegistry().allObjects) [v setMotionAngle:0];
+    }
+}
+@end
+
+static void LCLoadPrefs(void) {
+    CFPreferencesAppSynchronize(LC_DOMAIN);
+    lcMaster = LCBool(@"Enabled", YES);
+    lcLiquidity = LCClamp(LCNum(@"Liquidity", 1), 0.2, 3);
+    lcQuality = LCClamp(LCNum(@"Quality", 0.5), 0.15, 1);
+    lcMotion = LCBool(@"MotionHighlights", NO);
+    lcMotionSens = LCClamp(LCNum(@"MotionSensitivity", 1), 0, 3);
+    lcModel = (NSInteger)LCClamp(LCNum(@"Model", 0), 0, 2);
+    lcSize = LCClamp(LCNum(@"Size", 1), 0.6, 1.6);
+    lcPosition = (NSInteger)LCClamp(LCNum(@"Position", 0), 0, 1);
+    lcVOffset = LCClamp(LCNum(@"VerticalOffset", 0), -60, 400);
+    lcStyle = [LCStyle loadWithPrefix:@"Popup"];
+    for (LCGlassView *v in LCRegistry().allObjects) [v applyStyle];
+    [LCMotion refresh];
+}
 
 #pragma mark - Window (tembus sentuhan)
 
@@ -23,11 +403,17 @@
 }
 @end
 
+static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:size weight:UIImageSymbolWeightBold];
+    return [UIImage systemImageNamed:name withConfiguration:cfg];
+}
+
 #pragma mark - Gauge cairan (lingkaran berisi gelombang)
 
 @interface LCGaugeView : UIView
 @property (nonatomic, assign) CGFloat level;
 @property (nonatomic, assign) BOOL charging;
+@property (nonatomic, assign) CGFloat symbolSize;
 @property (nonatomic, strong) UIColor *liquidColor;
 @property (nonatomic, copy) void (^onLevel)(CGFloat shown);
 - (void)setSymbol:(NSString *)name;
@@ -47,6 +433,7 @@
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
+        _symbolSize = 18;
         self.layer.cornerRadius = frame.size.width / 2.0;
         self.layer.masksToBounds = YES;
         self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
@@ -58,10 +445,10 @@
 
         _ring = [CAShapeLayer layer];
         _ring.frame = self.bounds;
-        _ring.path = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(self.bounds, 0.75, 0.75)].CGPath;
+        _ring.path = [UIBezierPath bezierPathWithOvalInRect:CGRectInset(self.bounds, 0.5, 0.5)].CGPath;
         _ring.fillColor = nil;
-        _ring.strokeColor = [UIColor colorWithWhite:1 alpha:0.55].CGColor;
-        _ring.lineWidth = 1.5;
+        _ring.strokeColor = [UIColor colorWithWhite:1 alpha:0.30].CGColor;
+        _ring.lineWidth = 1.0;
         [self.layer addSublayer:_ring];
 
         _icon = [[UIImageView alloc] initWithFrame:self.bounds];
@@ -77,9 +464,7 @@
 }
 
 - (void)setSymbol:(NSString *)name {
-    UIImageSymbolConfiguration *cfg =
-        [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightBold];
-    _icon.image = [UIImage systemImageNamed:name withConfiguration:cfg];
+    _icon.image = LCSymbolImage(name, _symbolSize);
 }
 
 - (void)setLiquidColor:(UIColor *)liquidColor {
@@ -107,7 +492,7 @@
     _phase += 0.11;
     _shown += (_level - _shown) * 0.07;
     CGFloat edge = MIN(_shown, 1.0 - _shown);
-    CGFloat amp = 1.0 + 3.0 * MIN(1.0, edge * 6.0);
+    CGFloat amp = (1.0 + 3.0 * MIN(1.0, edge * 6.0)) * (self.bounds.size.width / 44.0);
     _back.path = [self pathWithAmp:amp phase:_phase + 1.8].CGPath;
     _front.path = [self pathWithAmp:amp * 0.8 phase:_phase * 1.3].CGPath;
     if (self.onLevel) self.onLevel(_shown);
@@ -140,28 +525,67 @@
 
 @end
 
-#pragma mark - Popup liquid glass
+#pragma mark - Wash warna aksen di dalam kaca
+
+@interface LCAccentView : UIView
+@end
+@implementation LCAccentView
++ (Class)layerClass { return [CAGradientLayer class]; }
+- (instancetype)initWithFrame:(CGRect)f accent:(UIColor *)accent {
+    if (!(self = [super initWithFrame:f])) return nil;
+    self.userInteractionEnabled = NO;
+    self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    CAGradientLayer *g = (CAGradientLayer *)self.layer;
+    g.colors = @[(id)[accent colorWithAlphaComponent:0.14].CGColor, (id)[accent colorWithAlphaComponent:0.0].CGColor, (id)[accent colorWithAlphaComponent:0.10].CGColor];
+    g.startPoint = CGPointMake(0, 0);
+    g.endPoint = CGPointMake(1, 1);
+    return self;
+}
+@end
+
+#pragma mark - Popup liquid glass (3 model: Default, Compact, Simple)
 
 @interface LCPopupView : UIView
-- (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging;
-- (void)playIn;
++ (CGSize)sizeForModel:(NSInteger)model scale:(CGFloat)k;
+- (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging model:(NSInteger)model scale:(CGFloat)k;
+- (void)playInFromTop:(BOOL)top;
 - (void)playOutWithCompletion:(void (^)(void))completion;
 - (void)stopAnimations;
 @end
 
 @implementation LCPopupView {
+    LCGlassView *_glass;
     LCGaugeView *_gauge;
+    UIImageView *_boltIcon;
     UIView *_glow;
     CAGradientLayer *_sheen;
-    UILabel *_title;
-    UILabel *_subtitle;
     UILabel *_percent;
-    BOOL _charging;
+    CADisplayLink *_countLink;
+    CGFloat _countShown, _level;
+    BOOL _charging, _fromTop;
+    NSInteger _model;
+    CGFloat _k;
 }
 
-- (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging {
-    if ((self = [super initWithFrame:CGRectMake(0, 0, LC_W, LC_H)])) {
-        _charging = charging;
++ (CGSize)sizeForModel:(NSInteger)model scale:(CGFloat)k {
+    switch (model) {
+        case 1: return CGSizeMake(124 * k, 48 * k);   // Compact
+        case 2: return CGSizeMake(104 * k, 38 * k);   // Simple
+        default: return CGSizeMake(300 * k, 72 * k);  // Default
+    }
+}
+
+- (UILabel *)labelWithFrame:(CGRect)f text:(NSString *)t font:(UIFont *)font color:(UIColor *)c {
+    UILabel *l = [[UILabel alloc] initWithFrame:f];
+    l.text = t; l.font = font; l.textColor = c;
+    [self addSubview:l];
+    return l;
+}
+
+- (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging model:(NSInteger)model scale:(CGFloat)k {
+    CGSize sz = [LCPopupView sizeForModel:model scale:k];
+    if ((self = [super initWithFrame:CGRectMake(0, 0, sz.width, sz.height)])) {
+        _charging = charging; _model = model; _k = k; _level = level;
         self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
         UIColor *accent;
@@ -174,122 +598,108 @@
         }
 
         CGRect b = self.bounds;
-        CGFloat r = LC_H / 2.0;
+        _glass = [[LCGlassView alloc] initWithFrame:b];
+        CGFloat r = [_glass radiusForSize:b.size];
+        _glass.layer.cornerRadius = r;
         UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:b cornerRadius:r];
 
         // bayangan jatuh
         self.layer.shadowColor = [UIColor blackColor].CGColor;
-        self.layer.shadowOpacity = 0.35;
-        self.layer.shadowRadius = 18;
-        self.layer.shadowOffset = CGSizeMake(0, 8);
+        self.layer.shadowOpacity = 0.30;
+        self.layer.shadowRadius = 16 * k;
+        self.layer.shadowOffset = CGSizeMake(0, 7 * k);
         self.layer.shadowPath = shape.CGPath;
 
-        // glow berdenyut di belakang kaca (tembus blur)
+        // glow berdenyut di belakang kaca
         _glow = [[UIView alloc] initWithFrame:b];
         _glow.backgroundColor = [UIColor clearColor];
         _glow.layer.shadowColor = accent.CGColor;
         _glow.layer.shadowOpacity = 0.0;
-        _glow.layer.shadowRadius = 16;
+        _glow.layer.shadowRadius = 14 * k;
         _glow.layer.shadowOffset = CGSizeZero;
         _glow.layer.shadowPath = shape.CGPath;
         [self addSubview:_glow];
 
-        // kaca
-        UIView *glass = [[UIView alloc] initWithFrame:b];
-        glass.layer.cornerRadius = r;
-        glass.layer.masksToBounds = YES;
-        [self addSubview:glass];
-
-        UIVisualEffectView *blur = [[UIVisualEffectView alloc]
-            initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial]];
-        blur.frame = b;
-        [glass addSubview:blur];
-
-        CAGradientLayer *tint = [CAGradientLayer layer];
-        tint.frame = b;
-        tint.colors = @[
-            (id)[UIColor colorWithWhite:1 alpha:0.30].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.05].CGColor,
-            (id)[accent colorWithAlphaComponent:0.16].CGColor
-        ];
-        tint.startPoint = CGPointMake(0, 0);
-        tint.endPoint = CGPointMake(1, 1);
-        [glass.layer addSublayer:tint];
+        // kaca (renderer sama dengan GlassSearch: blur + refraksi + specular + dispersi + tint)
+        [self addSubview:_glass];
+        [_glass.content addSubview:[[LCAccentView alloc] initWithFrame:b accent:accent]];
 
         // kilau yang menyapu saat muncul
         _sheen = [CAGradientLayer layer];
-        _sheen.frame = CGRectMake(-80, 0, 80, LC_H);
+        _sheen.frame = CGRectMake(-80 * k, 0, 80 * k, b.size.height);
         _sheen.colors = @[
             (id)[UIColor colorWithWhite:1 alpha:0.0].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.38].CGColor,
+            (id)[UIColor colorWithWhite:1 alpha:0.30].CGColor,
             (id)[UIColor colorWithWhite:1 alpha:0.0].CGColor
         ];
         _sheen.startPoint = CGPointMake(0, 0);
         _sheen.endPoint = CGPointMake(1, 0.45);
-        [glass.layer addSublayer:_sheen];
+        [_glass.content.layer addSublayer:_sheen];
 
-        // pinggiran kaca (gradient stroke: terang di sudut, redup di tengah)
-        CAGradientLayer *edge = [CAGradientLayer layer];
-        edge.frame = b;
-        edge.colors = @[
-            (id)[UIColor colorWithWhite:1 alpha:0.95].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.06].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.30].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.06].CGColor,
-            (id)[UIColor colorWithWhite:1 alpha:0.75].CGColor
-        ];
-        edge.startPoint = CGPointMake(0, 0);
-        edge.endPoint = CGPointMake(1, 1);
-        CAShapeLayer *edgeMask = [CAShapeLayer layer];
-        edgeMask.frame = b;
-        edgeMask.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(b, 0.6, 0.6)
-                                                   cornerRadius:r - 0.6].CGPath;
-        edgeMask.fillColor = nil;
-        edgeMask.strokeColor = [UIColor blackColor].CGColor;
-        edgeMask.lineWidth = 1.2;
-        edge.mask = edgeMask;
-        [self.layer addSublayer:edge];
+        UIColor *white = [UIColor whiteColor];
+        if (model == 1) {
+            // Compact: gauge kecil + persen
+            _gauge = [[LCGaugeView alloc] initWithFrame:CGRectMake(8 * k, 8 * k, 32 * k, 32 * k)];
+            _gauge.symbolSize = 13 * k;
+            _percent = [self labelWithFrame:CGRectMake(46 * k, 8 * k, sz.width - 46 * k - 10 * k, 32 * k) text:@"0%"
+                                       font:[UIFont monospacedDigitSystemFontOfSize:21 * k weight:UIFontWeightBold] color:white];
+        } else if (model == 2) {
+            // Simple: ikon petir + persen, tanpa gauge
+            _boltIcon = [[UIImageView alloc] initWithFrame:CGRectMake(13 * k, 9 * k, 20 * k, 20 * k)];
+            _boltIcon.contentMode = UIViewContentModeCenter;
+            _boltIcon.tintColor = accent;
+            _boltIcon.image = LCSymbolImage(charging ? @"bolt.fill" : @"bolt.slash.fill", 15 * k);
+            [self addSubview:_boltIcon];
+            _percent = [self labelWithFrame:CGRectMake(38 * k, 3 * k, sz.width - 38 * k - 12 * k, 32 * k) text:@"0%"
+                                       font:[UIFont monospacedDigitSystemFontOfSize:17 * k weight:UIFontWeightSemibold] color:white];
+        } else {
+            // Default: gauge + judul + subtitle + persen
+            _gauge = [[LCGaugeView alloc] initWithFrame:CGRectMake(14 * k, 14 * k, 44 * k, 44 * k)];
+            _gauge.symbolSize = 18 * k;
+            CGFloat tw = sz.width - 68 * k - 74 * k;
+            UILabel *title = [self labelWithFrame:CGRectMake(68 * k, 15 * k, tw, 21 * k)
+                                             text:charging ? @"Charger Connected" : @"Charger Disconnected"
+                                             font:[UIFont systemFontOfSize:15 * k weight:UIFontWeightSemibold] color:white];
+            title.adjustsFontSizeToFitWidth = YES;
+            title.minimumScaleFactor = 0.8;
+            [self labelWithFrame:CGRectMake(68 * k, 36 * k, tw, 18 * k)
+                            text:charging ? @"Charging" : @"On battery"
+                            font:[UIFont systemFontOfSize:12.5 * k weight:UIFontWeightMedium]
+                           color:[UIColor colorWithWhite:1 alpha:0.68]];
+            _percent = [self labelWithFrame:CGRectMake(sz.width - 80 * k, 20 * k, 66 * k, 32 * k) text:@"0%"
+                                       font:[UIFont monospacedDigitSystemFontOfSize:24 * k weight:UIFontWeightBold] color:white];
+            _percent.textAlignment = NSTextAlignmentRight;
+        }
 
-        // gauge
-        _gauge = [[LCGaugeView alloc] initWithFrame:CGRectMake(14, 14, 44, 44)];
-        _gauge.level = level;
-        _gauge.charging = charging;
-        _gauge.liquidColor = accent;
-        [_gauge setSymbol:charging ? @"bolt.fill" : @"bolt.slash.fill"];
-        [self addSubview:_gauge];
-
-        // teks
-        _title = [[UILabel alloc] initWithFrame:CGRectMake(68, 15, LC_W - 68 - 74, 21)];
-        _title.text = charging ? @"Charger Connected" : @"Charger Disconnected";
-        _title.textColor = [UIColor whiteColor];
-        _title.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
-        _title.adjustsFontSizeToFitWidth = YES;
-        _title.minimumScaleFactor = 0.8;
-        [self addSubview:_title];
-
-        _subtitle = [[UILabel alloc] initWithFrame:CGRectMake(68, 36, LC_W - 68 - 74, 18)];
-        _subtitle.text = charging ? @"Charging" : @"On battery";
-        _subtitle.textColor = [UIColor colorWithWhite:1 alpha:0.68];
-        _subtitle.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
-        [self addSubview:_subtitle];
-
-        _percent = [[UILabel alloc] initWithFrame:CGRectMake(LC_W - 80, 20, 66, 32)];
-        _percent.text = @"0%";
-        _percent.textAlignment = NSTextAlignmentRight;
-        _percent.textColor = [UIColor whiteColor];
-        _percent.font = [UIFont monospacedDigitSystemFontOfSize:24 weight:UIFontWeightBold];
-        [self addSubview:_percent];
-
-        __weak UILabel *wp = _percent;
-        _gauge.onLevel = ^(CGFloat shown) {
-            wp.text = [NSString stringWithFormat:@"%d%%", (int)lroundf(shown * 100.0)];
-        };
+        if (_gauge) {
+            _gauge.level = level;
+            _gauge.charging = charging;
+            _gauge.liquidColor = accent;
+            [_gauge setSymbol:charging ? @"bolt.fill" : @"bolt.slash.fill"];
+            [self addSubview:_gauge];
+            __weak UILabel *wp = _percent;
+            _gauge.onLevel = ^(CGFloat shown) {
+                wp.text = [NSString stringWithFormat:@"%d%%", (int)lroundf(shown * 100.0)];
+            };
+        }
     }
     return self;
 }
 
-- (void)playIn {
-    CGFloat dy = -(self.frame.origin.y + LC_H + 30);
+- (void)countTick {
+    _countShown += (_level - _countShown) * 0.07;
+    _percent.text = [NSString stringWithFormat:@"%d%%", (int)lroundf(_countShown * 100.0)];
+}
+
+- (CGFloat)offscreenDelta {
+    CGFloat h = self.bounds.size.height;
+    if (_fromTop) return -(self.frame.origin.y + h + 30);
+    return [UIScreen mainScreen].bounds.size.height - self.frame.origin.y + 30;
+}
+
+- (void)playInFromTop:(BOOL)top {
+    _fromTop = top;
+    CGFloat dy = [self offscreenDelta];
     self.alpha = 0;
     self.transform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0, dy), 0.6, 0.6);
 
@@ -303,16 +713,16 @@
         self.transform = CGAffineTransformIdentity;
     } completion:nil];
 
+    CGFloat W = self.bounds.size.width;
     CABasicAnimation *sweep = [CABasicAnimation animationWithKeyPath:@"position.x"];
-    sweep.fromValue = @(-40);
-    sweep.toValue = @(LC_W + 40);
+    sweep.fromValue = @(-40 * _k);
+    sweep.toValue = @(W + 40 * _k);
     sweep.duration = 1.0;
     sweep.beginTime = CACurrentMediaTime() + 0.25;
     sweep.fillMode = kCAFillModeBackwards;
     sweep.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
     [_sheen addAnimation:sweep forKey:@"sweep"];
 
-    // glow berdenyut
     CABasicAnimation *glow = [CABasicAnimation animationWithKeyPath:@"shadowOpacity"];
     glow.fromValue = @0.15;
     glow.toValue = @(_charging ? 0.75 : 0.40);
@@ -322,7 +732,20 @@
     glow.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
     [_glow.layer addAnimation:glow forKey:@"glow"];
 
-    [_gauge start];
+    if (_gauge) {
+        [_gauge start];
+    } else {
+        _countShown = 0;
+        _countLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(countTick)];
+        [_countLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+        if (_charging) {
+            CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+            pulse.fromValue = @1.0; pulse.toValue = @1.22; pulse.duration = 0.65;
+            pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
+            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [_boltIcon.layer addAnimation:pulse forKey:@"pulse"];
+        }
+    }
 
     @try {
         UIImpactFeedbackGenerator *g =
@@ -332,7 +755,7 @@
 }
 
 - (void)playOutWithCompletion:(void (^)(void))completion {
-    CGFloat dy = -(self.frame.origin.y + LC_H + 30);
+    CGFloat dy = [self offscreenDelta];
     [UIView animateWithDuration:0.4
                           delay:0
                         options:UIViewAnimationOptionCurveEaseIn
@@ -346,6 +769,9 @@
 
 - (void)stopAnimations {
     [_gauge stop];
+    [_countLink invalidate];
+    _countLink = nil;
+    [_boltIcon.layer removeAllAnimations];
     [_glow.layer removeAllAnimations];
     [_sheen removeAllAnimations];
 }
@@ -374,10 +800,13 @@ static void LCTeardown(void) {
     gPopup = nil;
     gWin.hidden = YES;
     gWin = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{ [LCMotion refresh]; });
 }
 
 static void LCPresent(BOOL charging) {
     LCTeardown();
+    LCLoadPrefs();
+    if (!lcMaster) return;
 
     float lvl = [UIDevice currentDevice].batteryLevel;
     if (lvl < 0) lvl = 0;
@@ -397,16 +826,26 @@ static void LCPresent(BOOL charging) {
     win.hidden = NO;
     [win layoutIfNeeded];
 
-    CGFloat top = win.safeAreaInsets.top;
-    CGFloat y = (top > 24) ? (top - 10) : 12; // di bawah notch kalau ada
-
-    LCPopupView *popup = [[LCPopupView alloc] initWithLevel:lvl charging:charging];
-    popup.center = CGPointMake(CGRectGetMidX(win.bounds), y + LC_H / 2.0);
+    LCPopupView *popup = [[LCPopupView alloc] initWithLevel:lvl charging:charging model:lcModel scale:lcSize];
+    CGSize ps = popup.bounds.size;
+    CGFloat H = win.bounds.size.height;
+    BOOL bottom = (lcPosition == 1);
+    CGFloat y;
+    if (!bottom) {
+        CGFloat top = win.safeAreaInsets.top;
+        y = ((top > 24) ? (top - 10) : 12) + lcVOffset;                 // di bawah notch kalau ada
+    } else {
+        CGFloat bot = win.safeAreaInsets.bottom;
+        y = H - MAX(bot, 12) - 10 - ps.height - lcVOffset;              // di atas home indicator
+    }
+    y = MAX(0, MIN(y, H - ps.height));
+    popup.center = CGPointMake(CGRectGetMidX(win.bounds), y + ps.height / 2.0);
     [vc.view addSubview:popup];
 
     gWin = win;
     gPopup = popup;
-    [popup playIn];
+    [popup playInFromTop:!bottom];
+    [LCMotion refresh];
 
     __weak LCPopupView *weakPopup = popup;
     dispatch_block_t block = dispatch_block_create(0, ^{
@@ -418,6 +857,18 @@ static void LCPresent(BOOL charging) {
     gDismiss = block;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(LC_SHOW_SECONDS * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), block);
+}
+
+#pragma mark - Notifikasi dari Settings (setting berubah / preview)
+
+static void LCPrefsChanged(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ LCLoadPrefs(); });
+}
+static void LCPreviewOn(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LCPresent(YES); });
+}
+static void LCPreviewOff(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LCPresent(NO); });
 }
 
 #pragma mark - Hook
@@ -450,3 +901,13 @@ static void LCPresent(BOOL charging) {
 }
 
 %end
+
+%ctor {
+    @autoreleasepool {
+        LCLoadPrefs();
+        CFNotificationCenterRef dc = CFNotificationCenterGetDarwinNotifyCenter();
+        CFNotificationCenterAddObserver(dc, NULL, LCPrefsChanged, CFSTR("com.example.liquidcharge/prefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(dc, NULL, LCPreviewOn, CFSTR("com.example.liquidcharge/preview-on"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(dc, NULL, LCPreviewOff, CFSTR("com.example.liquidcharge/preview-off"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
+}

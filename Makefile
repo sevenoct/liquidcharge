@@ -12,6 +12,9 @@ TWEAK_NAME = LiquidCharge
 
 LiquidCharge_FILES = Tweak.x
 LiquidCharge_CFLAGS = -fobjc-arc
-LiquidCharge_FRAMEWORKS = UIKit QuartzCore
+LiquidCharge_FRAMEWORKS = UIKit QuartzCore CoreMotion
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+SUBPROJECTS += prefs
+include $(THEOS_MAKE_PATH)/aggregate.mk
