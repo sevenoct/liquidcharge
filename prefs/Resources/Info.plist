@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key><string>en</string>
-	<key>CFBundleExecutable</key><string>LiquidChargePrefs</string>
-	<key>CFBundleIdentifier</key><string>com.example.liquidchargeprefs</string>
+	<key>CFBundleExecutable</key><string>LiquidGlassChargePrefs</string>
+	<key>CFBundleIdentifier</key><string>com.hasan.liquidglasschargeprefs</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-	<key>CFBundleName</key><string>LiquidChargePrefs</string>
+	<key>CFBundleName</key><string>LiquidGlassChargePrefs</string>
 	<key>CFBundlePackageType</key><string>BNDL</string>
 	<key>CFBundleShortVersionString</key><string>1.1.0</string>
 	<key>CFBundleVersion</key><string>1.1.0</string>
-	<key>NSPrincipalClass</key><string>LCRootListController</string>
+	<key>NSPrincipalClass</key><string>LQRootListController</string>
 </dict>
 </plist>

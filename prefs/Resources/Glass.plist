@@ -14,13 +14,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
 			<true/>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>key</key>
 			<string>Popup.Enabled</string>
 			<key>label</key>
@@ -36,13 +36,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>20.0</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -64,13 +64,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>0.35</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -92,13 +92,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>1.5</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -120,13 +120,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>1.0</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -148,13 +148,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>10.0</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -176,13 +176,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSLinkListCell</string>
 			<key>default</key>
 			<integer>2</integer>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>detail</key>
 			<string>PSListItemsController</string>
 			<key>key</key>
@@ -216,13 +216,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
 			<false/>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>key</key>
 			<string>Popup.DispersionEnabled</string>
 			<key>label</key>
@@ -238,13 +238,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>0.5</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -266,13 +266,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>100.0</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -294,7 +294,7 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>autoCapitalization</key>
 			<string>None</string>
 			<key>cell</key>
@@ -302,7 +302,7 @@
 			<key>default</key>
 			<string>#FFFFFF</string>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>key</key>
 			<string>Popup.LightTint</string>
 			<key>noAutoCorrect</key>
@@ -318,13 +318,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>0.25</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
@@ -346,7 +346,7 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>autoCapitalization</key>
 			<string>None</string>
 			<key>cell</key>
@@ -354,7 +354,7 @@
 			<key>default</key>
 			<string>#FFFFFF</string>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>key</key>
 			<string>Popup.DarkTint</string>
 			<key>noAutoCorrect</key>
@@ -370,13 +370,13 @@
 		</dict>
 		<dict>
 			<key>PostNotification</key>
-			<string>com.example.liquidcharge/prefs</string>
+			<string>com.hasan.liquidglasscharge/prefs</string>
 			<key>cell</key>
 			<string>PSSliderCell</string>
 			<key>default</key>
 			<real>0.1</real>
 			<key>defaults</key>
-			<string>com.example.liquidcharge</string>
+			<string>com.hasan.liquidglasscharge</string>
 			<key>isContinuous</key>
 			<true/>
 			<key>key</key>
