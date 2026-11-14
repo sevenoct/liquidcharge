@@ -8,11 +8,11 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = LiquidCharge
+TWEAK_NAME = LiquidGlassCharge
 
-LiquidCharge_FILES = Tweak.x
-LiquidCharge_CFLAGS = -fobjc-arc
-LiquidCharge_FRAMEWORKS = UIKit QuartzCore CoreMotion
+LiquidGlassCharge_FILES = Tweak.x
+LiquidGlassCharge_CFLAGS = -fobjc-arc
+LiquidGlassCharge_FRAMEWORKS = UIKit QuartzCore CoreMotion
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

@@ -1,6 +1,6 @@
-// LiquidCharge - popup "liquid glass" saat charger connect / disconnect
+// LiquidCharge Glass - popup "liquid glass" saat charger connect / disconnect
 // Target: iOS 15 (SpringBoard). Build dengan Theos.
-// Setting: Settings > LiquidCharge (model Default/Compact/Simple, ukuran, posisi, dan seluruh setting Liquid Glass).
+// Setting: Settings > LiquidCharge Glass (model Default/Compact/Simple, ukuran, posisi, dan seluruh setting Liquid Glass).
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -8,36 +8,36 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define LC_SHOW_SECONDS 3.0
+#define LQ_SHOW_SECONDS 3.0
 
-@interface UIWindow (LCPrivate)
+@interface UIWindow (LQPrivate)
 - (void)_setSecure:(BOOL)secure;
 @end
 
 #pragma mark - Pengaturan tata letak (model, ukuran, posisi)
 
-static NSInteger lcModel = 0;      // 0 Default, 1 Compact, 2 Simple
-static CGFloat lcSize = 1.0;       // skala ukuran popup
-static NSInteger lcPosition = 0;   // 0 Top, 1 Bottom
-static CGFloat lcVOffset = 0;      // jarak tambahan dari tepi layar (menjauhi tepi)
+static NSInteger lqModel = 0;      // 0 Default, 1 Compact, 2 Simple
+static CGFloat lqSize = 1.0;       // skala ukuran popup
+static NSInteger lqPosition = 0;   // 0 Top, 1 Bottom
+static CGFloat lqVOffset = 0;      // jarak tambahan dari tepi layar (menjauhi tepi)
 
-#pragma mark - Pengaturan Liquid Glass (Settings > LiquidCharge > Popup Glass)
+#pragma mark - Pengaturan Liquid Glass (Settings > LiquidCharge Glass > Popup Glass)
 
-#define LC_DOMAIN CFSTR("com.example.liquidcharge")
+#define LQ_DOMAIN CFSTR("com.hasan.liquidglasscharge")
 
-static id LCPref(NSString *key) {
-    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, LC_DOMAIN));
+static id LQPref(NSString *key) {
+    return CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key, LQ_DOMAIN));
 }
-static CGFloat LCNum(NSString *k, CGFloat def) {
-    id v = LCPref(k);
+static CGFloat LQNum(NSString *k, CGFloat def) {
+    id v = LQPref(k);
     return [v respondsToSelector:@selector(doubleValue)] ? (CGFloat)[v doubleValue] : def;
 }
-static BOOL LCBool(NSString *k, BOOL def) {
-    id v = LCPref(k);
+static BOOL LQBool(NSString *k, BOOL def) {
+    id v = LQPref(k);
     return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : def;
 }
-static CGFloat LCClamp(CGFloat v, CGFloat lo, CGFloat hi) { return MAX(lo, MIN(hi, v)); }
-static UIColor *LCHexColor(id hex, CGFloat a, UIColor *def) {
+static CGFloat LQClamp(CGFloat v, CGFloat lo, CGFloat hi) { return MAX(lo, MIN(hi, v)); }
+static UIColor *LQHexColor(id hex, CGFloat a, UIColor *def) {
     if ([hex isKindOfClass:NSString.class]) {
         NSString *h = [hex stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"# \n"]];
         unsigned v = 0;
@@ -47,55 +47,55 @@ static UIColor *LCHexColor(id hex, CGFloat a, UIColor *def) {
     return [def colorWithAlphaComponent:a];
 }
 
-@interface LCStyle : NSObject
+@interface LQStyle : NSObject
 @property (nonatomic) BOOL enabled, dispersion;
 @property (nonatomic) CGFloat blur, refraction, index, thickness, bezel, dispStrength, corner;
 @property (nonatomic) NSInteger spec;   // 0 None, 1 Border, 2 Glass, 3 iOS 26, 4 iOS 27
 @property (nonatomic, strong) UIColor *lightTint, *darkTint;
 + (instancetype)loadWithPrefix:(NSString *)p;
 @end
-@implementation LCStyle
+@implementation LQStyle
 + (instancetype)loadWithPrefix:(NSString *)p {
-    LCStyle *s = [LCStyle new];
+    LQStyle *s = [LQStyle new];
     #define K(x) [NSString stringWithFormat:@"%@.%@", p, x]
-    s.enabled = LCBool(K(@"Enabled"), YES);
-    s.blur = LCClamp(LCNum(K(@"Blur"), 20), 0, 60);
-    s.refraction = LCClamp(LCNum(K(@"Refraction"), 0.35), -2, 2);
-    s.index = LCClamp(LCNum(K(@"RefractiveIndex"), 1.5), 1, 2.5);
-    s.thickness = LCClamp(LCNum(K(@"GlassThickness"), 1), 0.1, 4);
-    s.bezel = LCClamp(LCNum(K(@"BezelWidth"), 10), 2, 60);
-    s.spec = (NSInteger)LCNum(K(@"SpecularType"), 2);
-    s.dispersion = LCBool(K(@"DispersionEnabled"), NO);
-    s.dispStrength = LCClamp(LCNum(K(@"DispersionStrength"), 0.5), 0, 1);
-    s.corner = LCClamp(LCNum(K(@"CornerRadius"), 100), 0, 100);
-    s.lightTint = LCHexColor(LCPref(K(@"LightTint")), LCClamp(LCNum(K(@"LightTintAlpha"), 0.25), 0, 1), UIColor.whiteColor);
-    s.darkTint = LCHexColor(LCPref(K(@"DarkTint")), LCClamp(LCNum(K(@"DarkTintAlpha"), 0.10), 0, 1), UIColor.whiteColor);
+    s.enabled = LQBool(K(@"Enabled"), YES);
+    s.blur = LQClamp(LQNum(K(@"Blur"), 20), 0, 60);
+    s.refraction = LQClamp(LQNum(K(@"Refraction"), 0.35), -2, 2);
+    s.index = LQClamp(LQNum(K(@"RefractiveIndex"), 1.5), 1, 2.5);
+    s.thickness = LQClamp(LQNum(K(@"GlassThickness"), 1), 0.1, 4);
+    s.bezel = LQClamp(LQNum(K(@"BezelWidth"), 10), 2, 60);
+    s.spec = (NSInteger)LQNum(K(@"SpecularType"), 2);
+    s.dispersion = LQBool(K(@"DispersionEnabled"), NO);
+    s.dispStrength = LQClamp(LQNum(K(@"DispersionStrength"), 0.5), 0, 1);
+    s.corner = LQClamp(LQNum(K(@"CornerRadius"), 100), 0, 100);
+    s.lightTint = LQHexColor(LQPref(K(@"LightTint")), LQClamp(LQNum(K(@"LightTintAlpha"), 0.25), 0, 1), UIColor.whiteColor);
+    s.darkTint = LQHexColor(LQPref(K(@"DarkTint")), LQClamp(LQNum(K(@"DarkTintAlpha"), 0.10), 0, 1), UIColor.whiteColor);
     #undef K
     return s;
 }
 @end
 
-static BOOL lcMaster = YES, lcMotion = NO;
-static CGFloat lcLiquidity = 1, lcQuality = 0.5, lcMotionSens = 1;
-static LCStyle *lcStyle;
+static BOOL lqMaster = YES, lqMotion = NO;
+static CGFloat lqLiquidity = 1, lqQuality = 0.5, lqMotionSens = 1;
+static LQStyle *lqStyle;
 
 #pragma mark - Glass views (gaya Liquid Glass: backdrop blur + refraksi + specular rim + dispersi)
 
-static id LCFilter(NSString *type) {
+static id LQFilter(NSString *type) {
     Class CF = NSClassFromString(@"CAFilter");
     if (!CF) return nil;
     return ((id (*)(id, SEL, id))objc_msgSend)(CF, NSSelectorFromString(@"filterWithType:"), type);
 }
 
 // Peta displacement: di tepi (selebar "bezel") cahaya dibelokkan; 128 = netral
-static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
+static UIImage *LQDisplacementMap(CGSize sz, CGFloat radius, LQStyle *st) {
     static NSCache *cache;
     if (!cache) { cache = [NSCache new]; cache.countLimit = 24; }
     int W = MAX(2, (int)lround(sz.width)), H = MAX(2, (int)lround(sz.height));
     NSString *key = [NSString stringWithFormat:@"%d,%d,%.1f,%.1f,%.2f,%.2f,%.2f", W, H, radius, st.bezel, st.refraction, st.index, st.thickness];
     UIImage *hit = [cache objectForKey:key];
     if (hit) return hit;
-    CGFloat strength = LCClamp((st.index - 1.0) * st.refraction * st.thickness * 1.6, -1, 1);
+    CGFloat strength = LQClamp((st.index - 1.0) * st.refraction * st.thickness * 1.6, -1, 1);
     uint8_t *buf = malloc((size_t)W * H * 4);
     float hx = W / 2.0f, hy = H / 2.0f;
     float r = (float)MIN(radius, MIN(hx, hy)), bz = (float)MAX(1, st.bezel);
@@ -115,8 +115,8 @@ static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
                 else { gx = 0; gy = py < 0 ? -1 : 1; }
                 float t = 1.0f - d / bz;
                 float m = powf(t, 2.2f) * (float)strength;
-                R = (uint8_t)LCClamp(128 + 127 * gx * m, 0, 255);
-                G = (uint8_t)LCClamp(128 + 127 * gy * m, 0, 255);
+                R = (uint8_t)LQClamp(128 + 127 * gx * m, 0, 255);
+                G = (uint8_t)LQClamp(128 + 127 * gy * m, 0, 255);
             }
             uint8_t *p = buf + ((size_t)y * W + x) * 4;
             p[0] = R; p[1] = G; p[2] = 128; p[3] = 255;
@@ -132,12 +132,12 @@ static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
 }
 
 // Ring tipis berwarna gradient (specular / dispersi), di-mask jadi garis tepi
-@interface LCRimView : UIView
+@interface LQRimView : UIView
 @property (nonatomic) CGFloat lineWidth;
 - (void)setColors:(NSArray *)colors locations:(NSArray *)loc width:(CGFloat)w angle:(CGFloat)a;
 - (void)setAngle:(CGFloat)a;
 @end
-@implementation LCRimView { CAShapeLayer *_mask; }
+@implementation LQRimView { CAShapeLayer *_mask; }
 + (Class)layerClass { return [CAGradientLayer class]; }
 - (instancetype)initWithFrame:(CGRect)f {
     if (!(self = [super initWithFrame:f])) return nil;
@@ -181,7 +181,7 @@ static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
 }
 @end
 
-@interface LCGlassView : UIView
+@interface LQGlassView : UIView
 @property (nonatomic, readonly) UIView *content;
 @property (nonatomic) CGFloat maxRadius;                // 0 = tanpa batas
 - (void)applyStyle;
@@ -189,7 +189,7 @@ static UIImage *LCDisplacementMap(CGSize sz, CGFloat radius, LCStyle *st) {
 - (CGFloat)radiusForSize:(CGSize)s;
 @end
 
-static NSHashTable<LCGlassView *> *LCRegistry(void) {
+static NSHashTable<LQGlassView *> *LQRegistry(void) {
     static NSHashTable *t;
     if (!t) t = [NSHashTable weakObjectsHashTable];
     return t;
@@ -198,10 +198,10 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
 // Dasar kaca = UIVisualEffectView (backdrop yang pasti menangkap wallpaper), lalu filter
 // backdrop-nya diganti (blur/saturasi/refraksi) dan lapisan gelap bawaannya disembunyikan
 // supaya tampilannya ditentukan oleh tint + rim kita (lebih mirip dock / Control Center).
-@implementation LCGlassView {
+@implementation LQGlassView {
     UIVisualEffectView *_fx;
     UIView *_tint;
-    LCRimView *_red, *_blue, *_spec;
+    LQRimView *_red, *_blue, *_spec;
     CGFloat _motion;
     NSString *_lastKey;
     BOOL _glassOn;
@@ -220,22 +220,22 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
     _tint.autoresizingMask = flex; _tint.userInteractionEnabled = NO;
     [self addSubview:_tint];
 
-    _red = [[LCRimView alloc] initWithFrame:self.bounds];
-    _blue = [[LCRimView alloc] initWithFrame:self.bounds];
-    _spec = [[LCRimView alloc] initWithFrame:self.bounds];
+    _red = [[LQRimView alloc] initWithFrame:self.bounds];
+    _blue = [[LQRimView alloc] initWithFrame:self.bounds];
+    _spec = [[LQRimView alloc] initWithFrame:self.bounds];
     [self addSubview:_red]; [self addSubview:_blue]; [self addSubview:_spec];
 
     _content = [[UIView alloc] initWithFrame:self.bounds];
     _content.autoresizingMask = flex;
     [self addSubview:_content];
 
-    [LCRegistry() addObject:self];
+    [LQRegistry() addObject:self];
     [self applyStyle];
     return self;
 }
-- (LCStyle *)style {
-    if (!lcStyle) lcStyle = [LCStyle loadWithPrefix:@"Popup"];
-    return lcStyle;
+- (LQStyle *)style {
+    if (!lqStyle) lqStyle = [LQStyle loadWithPrefix:@"Popup"];
+    return lqStyle;
 }
 - (CGFloat)radiusForSize:(CGSize)s {
     CGFloat full = MIN(s.width, s.height) / 2;
@@ -255,7 +255,7 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
 - (void)updateSpecAngle { [_spec setAngle:M_PI_4 + _motion]; }
 
 - (void)applyStyle {
-    LCStyle *st = [self style];
+    LQStyle *st = [self style];
     BOOL glass = st.enabled;
     if (_glassOn && !glass) {
         // kembali ke material bawaan: set ulang effect supaya UIKit memasang filter aslinya
@@ -295,7 +295,7 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
 }
 
 - (void)refreshFilters {
-    LCStyle *st = [self style];
+    LQStyle *st = [self style];
     if (!st.enabled) return;
     CGSize sz = self.bounds.size;
     if (sz.width < 2 || sz.height < 2) return;
@@ -310,8 +310,8 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
 
     NSMutableArray *f = [NSMutableArray array];
     if (fabs(st.refraction) > 0.001 && st.index > 1.001) {
-        id d = LCFilter(@"displacementMap");
-        UIImage *map = LCDisplacementMap(sz, self.layer.cornerRadius, st);
+        id d = LQFilter(@"displacementMap");
+        UIImage *map = LQDisplacementMap(sz, self.layer.cornerRadius, st);
         if (d && map) {
             @try {
                 [d setValue:(__bridge id)map.CGImage forKey:@"inputImage"];
@@ -320,22 +320,22 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
             } @catch (id e) {}
         }
     }
-    id blur = LCFilter(@"gaussianBlur");
+    id blur = LQFilter(@"gaussianBlur");
     if (blur) {
         @try {
-            [blur setValue:@(MAX(0.5, st.blur * lcLiquidity)) forKey:@"inputRadius"];
+            [blur setValue:@(MAX(0.5, st.blur * lqLiquidity)) forKey:@"inputRadius"];
             [blur setValue:@YES forKey:@"inputNormalizeEdges"];
             [f addObject:blur];
         } @catch (id e) {}
     }
-    id sat = LCFilter(@"colorSaturate");
+    id sat = LQFilter(@"colorSaturate");
     if (sat) { @try { [sat setValue:@1.8 forKey:@"inputAmount"]; [f addObject:sat]; } @catch (id e) {} }
     if (!f.count) return;       // filter privat tidak ada -> biarkan material bawaan
 
     CALayer *bl = bd.layer;
     @try {
         bl.filters = f;
-        if ([bl respondsToSelector:NSSelectorFromString(@"setScale:")]) [bl setValue:@(lcQuality) forKey:@"scale"];
+        if ([bl respondsToSelector:NSSelectorFromString(@"setScale:")]) [bl setValue:@(lqQuality) forKey:@"scale"];
     } @catch (id e) {}
 }
 
@@ -351,13 +351,13 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
 
 
 // Highlight mengikuti arah perangkat (kompas)
-@interface LCMotion : NSObject
+@interface LQMotion : NSObject
 + (void)refresh;
 @end
-@implementation LCMotion
+@implementation LQMotion
 + (void)refresh {
     static CMMotionManager *mm;
-    BOOL want = lcMotion && lcMaster && LCRegistry().count > 0;
+    BOOL want = lqMotion && lqMaster && LQRegistry().count > 0;
     if (want && !mm) {
         mm = [CMMotionManager new];
         mm.deviceMotionUpdateInterval = 1.0 / 30;
@@ -365,52 +365,52 @@ static NSHashTable<LCGlassView *> *LCRegistry(void) {
             ? CMAttitudeReferenceFrameXMagneticNorthZVertical : CMAttitudeReferenceFrameXArbitraryZVertical;
         [mm startDeviceMotionUpdatesUsingReferenceFrame:fr toQueue:NSOperationQueue.mainQueue withHandler:^(CMDeviceMotion *m, NSError *e) {
             if (!m) return;
-            CGFloat a = m.attitude.yaw * lcMotionSens;
-            for (LCGlassView *v in LCRegistry().allObjects) [v setMotionAngle:a];
+            CGFloat a = m.attitude.yaw * lqMotionSens;
+            for (LQGlassView *v in LQRegistry().allObjects) [v setMotionAngle:a];
         }];
     } else if (!want && mm) {
         [mm stopDeviceMotionUpdates];
         mm = nil;
-        for (LCGlassView *v in LCRegistry().allObjects) [v setMotionAngle:0];
+        for (LQGlassView *v in LQRegistry().allObjects) [v setMotionAngle:0];
     }
 }
 @end
 
-static void LCLoadPrefs(void) {
-    CFPreferencesAppSynchronize(LC_DOMAIN);
-    lcMaster = LCBool(@"Enabled", YES);
-    lcLiquidity = LCClamp(LCNum(@"Liquidity", 1), 0.2, 3);
-    lcQuality = LCClamp(LCNum(@"Quality", 0.5), 0.15, 1);
-    lcMotion = LCBool(@"MotionHighlights", NO);
-    lcMotionSens = LCClamp(LCNum(@"MotionSensitivity", 1), 0, 3);
-    lcModel = (NSInteger)LCClamp(LCNum(@"Model", 0), 0, 2);
-    lcSize = LCClamp(LCNum(@"Size", 1), 0.6, 1.6);
-    lcPosition = (NSInteger)LCClamp(LCNum(@"Position", 0), 0, 1);
-    lcVOffset = LCClamp(LCNum(@"VerticalOffset", 0), -60, 400);
-    lcStyle = [LCStyle loadWithPrefix:@"Popup"];
-    for (LCGlassView *v in LCRegistry().allObjects) [v applyStyle];
-    [LCMotion refresh];
+static void LQLoadPrefs(void) {
+    CFPreferencesAppSynchronize(LQ_DOMAIN);
+    lqMaster = LQBool(@"Enabled", YES);
+    lqLiquidity = LQClamp(LQNum(@"Liquidity", 1), 0.2, 3);
+    lqQuality = LQClamp(LQNum(@"Quality", 0.5), 0.15, 1);
+    lqMotion = LQBool(@"MotionHighlights", NO);
+    lqMotionSens = LQClamp(LQNum(@"MotionSensitivity", 1), 0, 3);
+    lqModel = (NSInteger)LQClamp(LQNum(@"Model", 0), 0, 2);
+    lqSize = LQClamp(LQNum(@"Size", 1), 0.6, 1.6);
+    lqPosition = (NSInteger)LQClamp(LQNum(@"Position", 0), 0, 1);
+    lqVOffset = LQClamp(LQNum(@"VerticalOffset", 0), -60, 400);
+    lqStyle = [LQStyle loadWithPrefix:@"Popup"];
+    for (LQGlassView *v in LQRegistry().allObjects) [v applyStyle];
+    [LQMotion refresh];
 }
 
 #pragma mark - Window (tembus sentuhan)
 
-@interface LCWindow : UIWindow
+@interface LQWindow : UIWindow
 @end
 
-@implementation LCWindow
+@implementation LQWindow
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     return nil;
 }
 @end
 
-static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
+static UIImage *LQSymbolImage(NSString *name, CGFloat size) {
     UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:size weight:UIImageSymbolWeightBold];
     return [UIImage systemImageNamed:name withConfiguration:cfg];
 }
 
 #pragma mark - Gauge cairan (lingkaran berisi gelombang)
 
-@interface LCGaugeView : UIView
+@interface LQGaugeView : UIView
 @property (nonatomic, assign) CGFloat level;
 @property (nonatomic, assign) BOOL charging;
 @property (nonatomic, assign) CGFloat symbolSize;
@@ -421,7 +421,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 - (void)stop;
 @end
 
-@implementation LCGaugeView {
+@implementation LQGaugeView {
     CAShapeLayer *_back;
     CAShapeLayer *_front;
     CAShapeLayer *_ring;
@@ -464,7 +464,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 }
 
 - (void)setSymbol:(NSString *)name {
-    _icon.image = LCSymbolImage(name, _symbolSize);
+    _icon.image = LQSymbolImage(name, _symbolSize);
 }
 
 - (void)setLiquidColor:(UIColor *)liquidColor {
@@ -527,9 +527,9 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 
 #pragma mark - Wash warna aksen di dalam kaca
 
-@interface LCAccentView : UIView
+@interface LQAccentView : UIView
 @end
-@implementation LCAccentView
+@implementation LQAccentView
 + (Class)layerClass { return [CAGradientLayer class]; }
 - (instancetype)initWithFrame:(CGRect)f accent:(UIColor *)accent {
     if (!(self = [super initWithFrame:f])) return nil;
@@ -545,7 +545,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 
 #pragma mark - Popup liquid glass (3 model: Default, Compact, Simple)
 
-@interface LCPopupView : UIView
+@interface LQPopupView : UIView
 + (CGSize)sizeForModel:(NSInteger)model scale:(CGFloat)k;
 - (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging model:(NSInteger)model scale:(CGFloat)k;
 - (void)playInFromTop:(BOOL)top;
@@ -553,9 +553,9 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 - (void)stopAnimations;
 @end
 
-@implementation LCPopupView {
-    LCGlassView *_glass;
-    LCGaugeView *_gauge;
+@implementation LQPopupView {
+    LQGlassView *_glass;
+    LQGaugeView *_gauge;
     UIImageView *_boltIcon;
     UIView *_glow;
     CAGradientLayer *_sheen;
@@ -583,7 +583,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 }
 
 - (instancetype)initWithLevel:(CGFloat)level charging:(BOOL)charging model:(NSInteger)model scale:(CGFloat)k {
-    CGSize sz = [LCPopupView sizeForModel:model scale:k];
+    CGSize sz = [LQPopupView sizeForModel:model scale:k];
     if ((self = [super initWithFrame:CGRectMake(0, 0, sz.width, sz.height)])) {
         _charging = charging; _model = model; _k = k; _level = level;
         self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
@@ -598,7 +598,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
         }
 
         CGRect b = self.bounds;
-        _glass = [[LCGlassView alloc] initWithFrame:b];
+        _glass = [[LQGlassView alloc] initWithFrame:b];
         CGFloat r = [_glass radiusForSize:b.size];
         _glass.layer.cornerRadius = r;
         UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:b cornerRadius:r];
@@ -622,7 +622,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 
         // kaca (renderer sama dengan GlassSearch: blur + refraksi + specular + dispersi + tint)
         [self addSubview:_glass];
-        [_glass.content addSubview:[[LCAccentView alloc] initWithFrame:b accent:accent]];
+        [_glass.content addSubview:[[LQAccentView alloc] initWithFrame:b accent:accent]];
 
         // kilau yang menyapu saat muncul
         _sheen = [CAGradientLayer layer];
@@ -639,7 +639,7 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
         UIColor *white = [UIColor whiteColor];
         if (model == 1) {
             // Compact: gauge kecil + persen
-            _gauge = [[LCGaugeView alloc] initWithFrame:CGRectMake(8 * k, 8 * k, 32 * k, 32 * k)];
+            _gauge = [[LQGaugeView alloc] initWithFrame:CGRectMake(8 * k, 8 * k, 32 * k, 32 * k)];
             _gauge.symbolSize = 13 * k;
             _percent = [self labelWithFrame:CGRectMake(46 * k, 8 * k, sz.width - 46 * k - 10 * k, 32 * k) text:@"0%"
                                        font:[UIFont monospacedDigitSystemFontOfSize:21 * k weight:UIFontWeightBold] color:white];
@@ -648,13 +648,13 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
             _boltIcon = [[UIImageView alloc] initWithFrame:CGRectMake(13 * k, 9 * k, 20 * k, 20 * k)];
             _boltIcon.contentMode = UIViewContentModeCenter;
             _boltIcon.tintColor = accent;
-            _boltIcon.image = LCSymbolImage(charging ? @"bolt.fill" : @"bolt.slash.fill", 15 * k);
+            _boltIcon.image = LQSymbolImage(charging ? @"bolt.fill" : @"bolt.slash.fill", 15 * k);
             [self addSubview:_boltIcon];
             _percent = [self labelWithFrame:CGRectMake(38 * k, 3 * k, sz.width - 38 * k - 12 * k, 32 * k) text:@"0%"
                                        font:[UIFont monospacedDigitSystemFontOfSize:17 * k weight:UIFontWeightSemibold] color:white];
         } else {
             // Default: gauge + judul + subtitle + persen
-            _gauge = [[LCGaugeView alloc] initWithFrame:CGRectMake(14 * k, 14 * k, 44 * k, 44 * k)];
+            _gauge = [[LQGaugeView alloc] initWithFrame:CGRectMake(14 * k, 14 * k, 44 * k, 44 * k)];
             _gauge.symbolSize = 18 * k;
             CGFloat tw = sz.width - 68 * k - 74 * k;
             UILabel *title = [self labelWithFrame:CGRectMake(68 * k, 15 * k, tw, 21 * k)
@@ -780,17 +780,17 @@ static UIImage *LCSymbolImage(NSString *name, CGFloat size) {
 
 #pragma mark - Presenter
 
-static LCWindow *gWin = nil;
-static LCPopupView *gPopup = nil;
+static LQWindow *gWin = nil;
+static LQPopupView *gPopup = nil;
 static dispatch_block_t gDismiss = nil;
 static BOOL gPlugged = NO;
 
-static BOOL LCIsPlugged(void) {
+static BOOL LQIsPlugged(void) {
     UIDeviceBatteryState s = [UIDevice currentDevice].batteryState;
     return (s == UIDeviceBatteryStateCharging || s == UIDeviceBatteryStateFull);
 }
 
-static void LCTeardown(void) {
+static void LQTeardown(void) {
     if (gDismiss) {
         dispatch_block_cancel(gDismiss);
         gDismiss = nil;
@@ -800,18 +800,18 @@ static void LCTeardown(void) {
     gPopup = nil;
     gWin.hidden = YES;
     gWin = nil;
-    dispatch_async(dispatch_get_main_queue(), ^{ [LCMotion refresh]; });
+    dispatch_async(dispatch_get_main_queue(), ^{ [LQMotion refresh]; });
 }
 
-static void LCPresent(BOOL charging) {
-    LCTeardown();
-    LCLoadPrefs();
-    if (!lcMaster) return;
+static void LQPresent(BOOL charging) {
+    LQTeardown();
+    LQLoadPrefs();
+    if (!lqMaster) return;
 
     float lvl = [UIDevice currentDevice].batteryLevel;
     if (lvl < 0) lvl = 0;
 
-    LCWindow *win = [[LCWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    LQWindow *win = [[LQWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     win.windowLevel = UIWindowLevelAlert + 1000;
     win.backgroundColor = [UIColor clearColor];
 
@@ -826,17 +826,17 @@ static void LCPresent(BOOL charging) {
     win.hidden = NO;
     [win layoutIfNeeded];
 
-    LCPopupView *popup = [[LCPopupView alloc] initWithLevel:lvl charging:charging model:lcModel scale:lcSize];
+    LQPopupView *popup = [[LQPopupView alloc] initWithLevel:lvl charging:charging model:lqModel scale:lqSize];
     CGSize ps = popup.bounds.size;
     CGFloat H = win.bounds.size.height;
-    BOOL bottom = (lcPosition == 1);
+    BOOL bottom = (lqPosition == 1);
     CGFloat y;
     if (!bottom) {
         CGFloat top = win.safeAreaInsets.top;
-        y = ((top > 24) ? (top - 10) : 12) + lcVOffset;                 // di bawah notch kalau ada
+        y = ((top > 24) ? (top - 10) : 12) + lqVOffset;                 // di bawah notch kalau ada
     } else {
         CGFloat bot = win.safeAreaInsets.bottom;
-        y = H - MAX(bot, 12) - 10 - ps.height - lcVOffset;              // di atas home indicator
+        y = H - MAX(bot, 12) - 10 - ps.height - lqVOffset;              // di atas home indicator
     }
     y = MAX(0, MIN(y, H - ps.height));
     popup.center = CGPointMake(CGRectGetMidX(win.bounds), y + ps.height / 2.0);
@@ -845,30 +845,30 @@ static void LCPresent(BOOL charging) {
     gWin = win;
     gPopup = popup;
     [popup playInFromTop:!bottom];
-    [LCMotion refresh];
+    [LQMotion refresh];
 
-    __weak LCPopupView *weakPopup = popup;
+    __weak LQPopupView *weakPopup = popup;
     dispatch_block_t block = dispatch_block_create(0, ^{
-        LCPopupView *p = weakPopup;
+        LQPopupView *p = weakPopup;
         [p playOutWithCompletion:^{
-            if (gPopup == p) LCTeardown();
+            if (gPopup == p) LQTeardown();
         }];
     });
     gDismiss = block;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(LC_SHOW_SECONDS * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(LQ_SHOW_SECONDS * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), block);
 }
 
 #pragma mark - Notifikasi dari Settings (setting berubah / preview)
 
-static void LCPrefsChanged(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
-    dispatch_async(dispatch_get_main_queue(), ^{ LCLoadPrefs(); });
+static void LQPrefsChanged(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ LQLoadPrefs(); });
 }
-static void LCPreviewOn(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
-    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LCPresent(YES); });
+static void LQPreviewOn(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LQPresent(YES); });
 }
-static void LCPreviewOff(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
-    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LCPresent(NO); });
+static void LQPreviewOff(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef u) {
+    dispatch_async(dispatch_get_main_queue(), ^{ [UIDevice currentDevice].batteryMonitoringEnabled = YES; LQPresent(NO); });
 }
 
 #pragma mark - Hook
@@ -880,21 +880,21 @@ static void LCPreviewOff(CFNotificationCenterRef c, void *o, CFStringRef n, cons
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [UIDevice currentDevice].batteryMonitoringEnabled = YES;
-        gPlugged = LCIsPlugged();
+        gPlugged = LQIsPlugged();
 
         [[NSNotificationCenter defaultCenter]
             addObserverForName:UIDeviceBatteryStateDidChangeNotification
                         object:nil
                          queue:[NSOperationQueue mainQueue]
                     usingBlock:^(NSNotification *note) {
-            BOOL now = LCIsPlugged();
+            BOOL now = LQIsPlugged();
             if (now == gPlugged) return; // Charging -> Full dll tidak dihitung
             gPlugged = now;
 
             // beri jeda sedikit biar level baterai sudah ter-update
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
-                LCPresent(now);
+                LQPresent(now);
             });
         }];
     });
@@ -904,10 +904,10 @@ static void LCPreviewOff(CFNotificationCenterRef c, void *o, CFStringRef n, cons
 
 %ctor {
     @autoreleasepool {
-        LCLoadPrefs();
+        LQLoadPrefs();
         CFNotificationCenterRef dc = CFNotificationCenterGetDarwinNotifyCenter();
-        CFNotificationCenterAddObserver(dc, NULL, LCPrefsChanged, CFSTR("com.example.liquidcharge/prefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        CFNotificationCenterAddObserver(dc, NULL, LCPreviewOn, CFSTR("com.example.liquidcharge/preview-on"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        CFNotificationCenterAddObserver(dc, NULL, LCPreviewOff, CFSTR("com.example.liquidcharge/preview-off"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(dc, NULL, LQPrefsChanged, CFSTR("com.hasan.liquidglasscharge/prefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(dc, NULL, LQPreviewOn, CFSTR("com.hasan.liquidglasscharge/preview-on"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(dc, NULL, LQPreviewOff, CFSTR("com.hasan.liquidglasscharge/preview-off"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     }
 }
