@@ -1,7 +1,7 @@
 Package: com.hasan.liquidglasscharge
 Name: LiquidCharge Glass
 Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0)
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64
 Description: Liquid glass popup with battery percentage and charging animation when the charger is connected or disconnected. Models, size, position and full Liquid Glass settings.
 Maintainer: Hasan

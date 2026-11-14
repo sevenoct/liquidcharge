@@ -20,6 +20,7 @@ static NSInteger lqModel = 0;      // 0 Default, 1 Compact, 2 Simple
 static CGFloat lqSize = 1.0;       // skala ukuran popup
 static NSInteger lqPosition = 0;   // 0 Top, 1 Bottom
 static CGFloat lqVOffset = 0;      // jarak tambahan dari tepi layar (menjauhi tepi)
+static BOOL lqAccent = YES;        // warna hijau/biru/merah; NO = popup netral (putih)
 
 #pragma mark - Pengaturan Liquid Glass (Settings > LiquidCharge Glass > Popup Glass)
 
@@ -387,6 +388,7 @@ static void LQLoadPrefs(void) {
     lqSize = LQClamp(LQNum(@"Size", 1), 0.6, 1.6);
     lqPosition = (NSInteger)LQClamp(LQNum(@"Position", 0), 0, 1);
     lqVOffset = LQClamp(LQNum(@"VerticalOffset", 0), -60, 400);
+    lqAccent = LQBool(@"AccentColors", YES);
     lqStyle = [LQStyle loadWithPrefix:@"Popup"];
     for (LQGlassView *v in LQRegistry().allObjects) [v applyStyle];
     [LQMotion refresh];
@@ -589,7 +591,9 @@ static UIImage *LQSymbolImage(NSString *name, CGFloat size) {
         self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
         UIColor *accent;
-        if (charging) {
+        if (!lqAccent) {
+            accent = [UIColor whiteColor];                  // netral: tanpa hijau/biru/merah
+        } else if (charging) {
             accent = [UIColor colorWithRed:0.30 green:0.86 blue:0.47 alpha:1];
         } else if (level <= 0.20) {
             accent = [UIColor colorWithRed:1.00 green:0.33 blue:0.30 alpha:1];
@@ -622,7 +626,7 @@ static UIImage *LQSymbolImage(NSString *name, CGFloat size) {
 
         // kaca (renderer sama dengan GlassSearch: blur + refraksi + specular + dispersi + tint)
         [self addSubview:_glass];
-        [_glass.content addSubview:[[LQAccentView alloc] initWithFrame:b accent:accent]];
+        if (lqAccent) [_glass.content addSubview:[[LQAccentView alloc] initWithFrame:b accent:accent]];
 
         // kilau yang menyapu saat muncul
         _sheen = [CAGradientLayer layer];
@@ -730,7 +734,7 @@ static UIImage *LQSymbolImage(NSString *name, CGFloat size) {
     glow.autoreverses = YES;
     glow.repeatCount = HUGE_VALF;
     glow.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [_glow.layer addAnimation:glow forKey:@"glow"];
+    if (lqAccent) [_glow.layer addAnimation:glow forKey:@"glow"];
 
     if (_gauge) {
         [_gauge start];
